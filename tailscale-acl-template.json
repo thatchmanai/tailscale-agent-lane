@@ -1,0 +1,37 @@
+// Tailscale ACL policy template — a least-privilege lane for a home AI agent.
+// Replace the example values before pasting into your admin console
+// (Access Controls -> JSON editor -> replace all -> Save):
+//   you@example.com  -> the account email your own devices sign in with
+//   100.64.0.1       -> your agent machine's tailnet address
+//   100.64.0.2       -> your hub machine's tailnet address
+// Prerequisite: tag the agent's device in the console with tag:agent.
+// Effect: your own devices keep full access to everything.
+// The tagged agent machine can reach ONLY the hub, and only on
+// ports 22 (SSH) and 8123 (Home Assistant). Everything else is denied.
+{
+  "tagOwners": {
+    "tag:agent": ["autogroup:admin"],
+  },
+
+  "hosts": {
+    "hub": "100.64.0.2",
+    "agent-vm": "100.64.0.1",
+  },
+
+  "acls": [
+    // Your own (untagged) devices: unrestricted — this matches the default policy.
+    {
+      "action": "accept",
+      "src": ["you@example.com"],
+      "dst": ["*:*"],
+    },
+
+    // The agent's machine: the hub's SSH (22) and Home Assistant (8123)
+    // ports — nothing else, nowhere else.
+    {
+      "action": "accept",
+      "src": ["tag:agent"],
+      "dst": ["hub:22", "hub:8123"],
+    },
+  ],
+}

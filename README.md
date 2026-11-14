@@ -37,7 +37,7 @@ Three working goals:
 
 ![Figure 1 — Tailnet Architecture](diagram-1-architecture.png)
 
-**Figure 1 — Tailnet Architecture.** Every device runs Tailscale and gets a stable private address in the 100.x range. Connections between devices are direct, encrypted WireGuard tunnels; Tailscale's servers coordinate introductions and hold the access policy — they do not carry the traffic.
+**Figure 1 — Tailnet Architecture.** Every device runs Tailscale and gets a stable private address in the 100.x range. Connections between devices are encrypted WireGuard tunnels, direct whenever a direct path exists; Tailscale's servers coordinate introductions and hold the access policy, and when no direct path is possible they relay the traffic through DERP servers, still end-to-end encrypted — they never see its contents.
 
 The example addresses in this package (`100.64.0.1`, `100.64.0.2`, `100.64.0.3`) are placeholders — substitute your own from the admin console's Machines page.
 

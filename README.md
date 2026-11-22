@@ -86,15 +86,20 @@ The lane has four components:
    PasswordAuthentication no
    KbdInteractiveAuthentication no
    ChallengeResponseAuthentication no
+   # No forwarding or tunneling: the key opens a shell on this machine only.
+   AllowTcpForwarding no
+   PermitTunnel no
+   AllowAgentForwarding no
+   X11Forwarding no
    ```
 
 4. **On the hub — the bound authorized key.** The agent's public key goes into `~/.ssh/authorized_keys` with an address binding:
 
    ```
-   from="100.64.0.1" ssh-ed25519 <agent's public key> agent
+   restrict,from="100.64.0.1" ssh-ed25519 <agent's public key> agent
    ```
 
-   The key is accepted *only* when the connection arrives from the agent machine's tailnet address. The same key copied anywhere else is useless on this machine. (Use your agent's real tailnet address, not the example.)
+   The key is accepted *only* when the connection arrives from the agent machine's tailnet address. The same key copied anywhere else is useless on this machine. (Use your agent's real tailnet address, not the example.) The `restrict` option also disables port forwarding, agent forwarding, X11 forwarding, and PTY allocation for this key at the key layer as well, so the key can do nothing beyond opening the shell even if a server setting is ever loosened.
 
 **Why not Tailscale's built-in SSH?** Tailscale offers its own SSH feature that replaces the Mac's SSH server. Leave it OFF: it would bypass the Mac-side controls above (key-only settings and the address binding) and move trust into a separate system. One door, guarded the Mac's own way.
 
@@ -131,7 +136,7 @@ No subnet router is needed for printing, and setting one up does not fix the pho
 | To Stop… | Do This | Effect |
 |---|---|---|
 | The agent's SSH, instantly | On the hub: System Settings → General → Sharing → turn Remote Login OFF | The lane dies immediately; nothing else on the hub changes |
-| The agent's SSH, permanently | Also delete the agent's line from `~/.ssh/authorized_keys`, and/or the drop-in file | The key can never authenticate again |
+| The agent's SSH, permanently | Delete the agent's line from `~/.ssh/authorized_keys` — this is the required step, and the only one that revokes the key. Removing the drop-in file is optional cleanup, never a substitute: deleting the drop-in alone leaves the key fully valid and restores the default password sign-in paths the drop-in had disabled | The key can never authenticate again |
 | The agent's access entirely | In the admin console: remove Rule 2 from the policy, or delete the agent's device | The agent can reach nothing on the tailnet |
 | A lost owner device | In the admin console: delete that device | Its access ends everywhere at once |
 | Everything | Delete devices in the console; quit and remove Tailscale from the hub | Full teardown; also remove the VPN configuration in System Settings |

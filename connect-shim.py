@@ -12,6 +12,7 @@ import re
 import select
 import socket
 import sys
+import time
 
 target_host, target_port = sys.argv[1], int(sys.argv[2])
 m = re.match(r'http://([^@]+)@([^:/]+):(\d+)', os.environ['HTTPS_PROXY'])
@@ -44,23 +45,75 @@ if rest:
     sys.stdout.buffer.flush()
 
 s.setblocking(False)
+pending = b""  # stdin bytes not yet fully sent to the socket
+stdin_open = True
 while True:
-    r, _, _ = select.select([s, sys.stdin.buffer], [], [])
+    readers = [s]
+    if stdin_open and len(pending) < 1 << 20:
+        # Backpressure: stop reading stdin while a large buffer is unsent.
+        readers.append(sys.stdin.buffer)
+    writers = [s] if pending else []
+    r, w, _ = select.select(readers, writers, [])
     if s in r:
         try:
             data = s.recv(65536)
         except BlockingIOError:
-            data = b""
-        if not data:
+            data = None  # spurious wakeup on a non-blocking socket; not EOF
+        if data == b"":
+            # Real EOF on the read side. That is a half-close: the peer may
+            # still be able to receive, so rescue whatever stdin input is
+            # already available and flush it on a best-effort basis
+            # (bounded to ~1s) before terminating.
+            deadline = time.monotonic() + 1.0
+            if stdin_open:
+                os.set_blocking(0, False)
+            while time.monotonic() < deadline:
+                if stdin_open:
+                    try:
+                        chunk = os.read(0, 65536)
+                    except BlockingIOError:
+                        chunk = None
+                    except OSError:
+                        chunk = b""
+                    if chunk:
+                        pending += chunk
+                    elif chunk == b"":
+                        stdin_open = False
+                if pending:
+                    _, w, _ = select.select([], [s], [], 0.05)
+                    if s in w:
+                        try:
+                            sent = s.send(pending)
+                        except (BlockingIOError, OSError):
+                            break
+                        pending = pending[sent:]
+                if not pending and not stdin_open:
+                    break
+                if not pending:
+                    select.select([sys.stdin.buffer], [], [], 0.05)
             break
-        sys.stdout.buffer.write(data)
-        sys.stdout.buffer.flush()
-    if sys.stdin.buffer in r:
-        data = os.read(0, 65536)
-        if not data:
+        if data:
+            sys.stdout.buffer.write(data)
+            sys.stdout.buffer.flush()
+    if stdin_open and sys.stdin.buffer in r:
+        chunk = os.read(0, 65536)
+        if not chunk:
+            stdin_open = False
+            if not pending:
+                try:
+                    s.shutdown(socket.SHUT_WR)
+                except OSError:
+                    pass
+        else:
+            pending += chunk
+    if s in w and pending:
+        try:
+            sent = s.send(pending)
+        except BlockingIOError:
+            sent = 0
+        pending = pending[sent:]
+        if not pending and not stdin_open:
             try:
                 s.shutdown(socket.SHUT_WR)
             except OSError:
                 pass
-            break
-        s.sendall(data)
